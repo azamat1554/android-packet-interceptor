@@ -26,8 +26,8 @@ import java.nio.ByteBuffer;
 // TODO: Reduce public mutability
 public class Packet
 {
-    public static final int IP4_HEADER_SIZE = 20;
-    public static final int TCP_HEADER_SIZE = 20;
+    public static final int IP4_HEADER_SIZE = 20; // in bytes
+    public static final int TCP_HEADER_SIZE = 20; // in bytes
     public static final int UDP_HEADER_SIZE = 8;
 
     public IP4Header ip4Header;
@@ -263,8 +263,8 @@ public class Packet
         {
             byte versionAndIHL = buffer.get();
             this.version = (byte) (versionAndIHL >> 4);
-            this.IHL = (byte) (versionAndIHL & 0x0F);
-            this.headerLength = this.IHL << 2;
+            this.IHL = (byte) (versionAndIHL & 0x0F); // in 32-bit words
+            this.headerLength = this.IHL << 2; // transfer to bytes
 
             this.typeOfService = BitUtils.getUnsignedByte(buffer.get());
             this.totalLength = BitUtils.getUnsignedShort(buffer.getShort());
@@ -355,7 +355,9 @@ public class Packet
             this.acknowledgementNumber = BitUtils.getUnsignedInt(buffer.getInt());
 
             this.dataOffsetAndReserved = buffer.get();
-            this.headerLength = (this.dataOffsetAndReserved & 0xF0) >> 2;
+            // Поле 'длина заголовка' содержит размер TCP-загоролка в 32битных словах.
+            // Однако, здесь длина сохраняется в байтах, поэтому сдвиг на 2, а не на 4 бита.
+            this.headerLength = (this.dataOffsetAndReserved & 0xF0) >> 2; // in bytes
             this.flags = buffer.get();
             this.window = BitUtils.getUnsignedShort(buffer.getShort());
 

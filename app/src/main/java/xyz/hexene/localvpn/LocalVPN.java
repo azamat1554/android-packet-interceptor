@@ -22,8 +22,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.VpnService;
-import android.support.v4.content.LocalBroadcastManager;
 import android.os.Bundle;
+import android.support.v4.content.LocalBroadcastManager;
 import android.view.View;
 import android.widget.Button;
 
@@ -47,7 +47,7 @@ public class LocalVPN extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_local_vpn);
-        final Button vpnButton = (Button) findViewById(R.id.vpn);
+        final Button vpnButton = findViewById(R.id.vpn);
         vpnButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -66,6 +66,17 @@ public class LocalVPN extends Activity {
         else
             onActivityResult(VPN_REQUEST_CODE, RESULT_OK, null);
     }
+
+
+//    private void printProcesses() {
+//        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+//
+//        for (ActivityManager.RunningAppProcessInfo processInfo : manager.getRunningAppProcesses()) {
+//            Log.d(TAG, "PID: " + processInfo.pid);
+//            Log.d(TAG, "UID: " + processInfo.uid);
+//            Log.d(TAG, "Process name: " + processInfo.processName);
+//        }
+//    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {

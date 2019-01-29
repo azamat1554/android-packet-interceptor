@@ -29,6 +29,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 import xyz.hexene.localvpn.TCB.TCBStatus;
 
+/**
+ * Насколько я понял, этот поток занимается обработкой
+ * трафика, приходящего из сети.
+ *
+ */
 public class TCPInput implements Runnable {
     private static final String TAG = TCPInput.class.getSimpleName();
     private static final int HEADER_SIZE = Packet.IP4_HEADER_SIZE + Packet.TCP_HEADER_SIZE;
@@ -78,7 +83,7 @@ public class TCPInput implements Runnable {
         Packet referencePacket = tcb.referencePacket;
         try {
             if (tcb.channel.finishConnect()) {
-                keyIterator.remove();
+                keyIterator.remove(); // мне кажется, если возможно, лучше вынести наружу метода, будет очевиднее
                 tcb.status = TCBStatus.SYN_RECEIVED;
 
                 // TODO: Set MSS for receiving larger packets from the device

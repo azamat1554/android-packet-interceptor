@@ -18,6 +18,15 @@ package xyz.hexene.localvpn;
 
 import java.util.LinkedHashMap;
 
+/**
+ * Это хэшмапа с возможностью удаления наименее редко вызываемых записей.
+ * То есть если не хватает места если мапа заполнеда то при добавлении нового элемента будет удален
+ * наиболее редко используемый элемент.
+ * https://en.wikipedia.org/wiki/Cache_replacement_policies#Least_recently_used_(LRU)
+ *
+ * @param <K> тип ключа
+ * @param <V> тип значения
+ */
 public class LRUCache<K, V> extends LinkedHashMap<K, V> {
     private int maxSize;
     private CleanupCallback callback;
@@ -38,7 +47,7 @@ public class LRUCache<K, V> extends LinkedHashMap<K, V> {
         return false;
     }
 
-    public static interface CleanupCallback<K, V> {
-        public void cleanup(Entry<K, V> eldest);
+    public interface CleanupCallback<K, V> {
+        void cleanup(Entry<K, V> eldest);
     }
 }

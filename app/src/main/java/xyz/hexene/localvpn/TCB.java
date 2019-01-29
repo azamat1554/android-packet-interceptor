@@ -24,6 +24,8 @@ import java.util.Map;
 
 /**
  * Transmission Control Block
+ *
+ * Этот класс хранит новые значения для заколовнов.
  */
 public class TCB {
     public String ipAndPort;
@@ -48,7 +50,7 @@ public class TCB {
     public SelectionKey selectionKey;
 
     private static final int MAX_CACHE_SIZE = 50; // XXX: Is this ideal?
-    private static LRUCache<String, TCB> tcbCache =
+    private static final LRUCache<String, TCB> tcbCache =
             new LRUCache<>(MAX_CACHE_SIZE, new LRUCache.CleanupCallback<String, TCB>() {
                 @Override
                 public void cleanup(Map.Entry<String, TCB> eldest) {

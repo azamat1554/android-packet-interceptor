@@ -31,6 +31,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import xyz.hexene.localvpn.Packet.TCPHeader;
 import xyz.hexene.localvpn.TCB.TCBStatus;
 
+/**
+ * Этот поток выполняют работы TCP сервера.
+ * Отправляет ответы в сеть.
+ */
 public class TCPOutput implements Runnable {
     private static final String TAG = TCPOutput.class.getSimpleName();
 
@@ -41,10 +45,16 @@ public class TCPOutput implements Runnable {
 
     private Random random = new Random();
 
+    /**
+     * @param inputQueue
+     * @param outputQueue
+     * @param selector
+     * @param vpnService
+     */
     public TCPOutput(ConcurrentLinkedQueue<Packet> inputQueue, ConcurrentLinkedQueue<ByteBuffer> outputQueue,
                      Selector selector, LocalVPNService vpnService) {
-        this.inputQueue = inputQueue;
-        this.outputQueue = outputQueue;
+        this.inputQueue = inputQueue; // deviceToNetworkTCPQueue - сюда записываются пакеты прочитанные из канала
+        this.outputQueue = outputQueue; // networkToDeviceQueue
         this.selector = selector;
         this.vpnService = vpnService;
     }
@@ -70,7 +80,7 @@ public class TCPOutput implements Runnable {
 
                 ByteBuffer payloadBuffer = currentPacket.backingBuffer;
                 currentPacket.backingBuffer = null;
-                ByteBuffer responseBuffer = ByteBufferPool.acquire();
+                ByteBuffer responseBuffer = ByteBufferPool.acquire(); // просто создает буфер или берез ранее созданный
 
                 InetAddress destinationAddress = currentPacket.ip4Header.destinationAddress;
 
@@ -80,7 +90,7 @@ public class TCPOutput implements Runnable {
 
                 String ipAndPort = destinationAddress.getHostAddress() + ":" +
                         destinationPort + ":" + sourcePort;
-                TCB tcb = TCB.getTCB(ipAndPort);
+                TCB tcb = TCB.getTCB(ipAndPort); // кэш сокетов: ключ -
                 if (tcb == null)
                     initializeConnection(ipAndPort, destinationAddress, destinationPort,
                             currentPacket, tcpHeader, responseBuffer);
@@ -114,6 +124,7 @@ public class TCPOutput implements Runnable {
         if (tcpHeader.isSYN()) {
             SocketChannel outputChannel = SocketChannel.open();
             outputChannel.configureBlocking(false);
+            // Чтобы НЕ перехватывать трафик нашего приложения, иключаем сокет из под VPN.
             vpnService.protect(outputChannel.socket());
 
             TCB tcb = new TCB(ipAndPort, random.nextInt(Short.MAX_VALUE + 1), tcpHeader.sequenceNumber, tcpHeader.sequenceNumber + 1,

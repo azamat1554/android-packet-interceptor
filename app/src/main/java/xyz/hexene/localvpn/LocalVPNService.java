@@ -188,7 +188,7 @@ public class LocalVPNService extends VpnService {
                             Впихну пока сюда проверку приложения, потом разберусь куда нужно.
 
                             Алгоритм связывания пакета с приложением:
-                                1. Из пакета мы знаем ip:port
+                                1. Из пакета мы знаем ip:port и протокол
                                 2. Зная ip:port - находим подходящее соединее в файле соединений (TCP или UDP):
                                     /proc/net/tcp, /proc/net/udp
                                    В этом файле хранится uid приложения, которое это соединение открыло.
@@ -197,7 +197,7 @@ public class LocalVPNService extends VpnService {
                          */
                         List<ParsedProcEntry> connections = ParsedProcEntry.parse("/proc/net/tcp"); // TODO: еще нужно udp
                         for (ParsedProcEntry p : connections) {
-                            if (packet.ip4Header.destinationAddress == p.getLocalAddress() && packet.tcpHeader.destinationPort == p.getPort()) {
+                            if (packet.ip4Header.sourceAddress.equals(p.getLocalAddress()) && packet.tcpHeader.sourcePort == p.getPort()) {
                                 Log.d(TAG, getAppName(p.getUid()) + ": " + p);
                             }
                         }

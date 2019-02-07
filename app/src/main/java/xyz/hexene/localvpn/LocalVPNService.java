@@ -17,10 +17,7 @@
 package xyz.hexene.localvpn;
 
 import android.app.PendingIntent;
-import android.content.Context;
 import android.content.Intent;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
 import android.support.v4.content.LocalBroadcastManager;
@@ -34,9 +31,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.Selector;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -79,7 +73,7 @@ public class LocalVPNService extends VpnService {
             executorService.submit(new TCPInput(networkToDeviceQueue, tcpSelector));
             executorService.submit(new TCPOutput(deviceToNetworkTCPQueue, networkToDeviceQueue, tcpSelector, this));
             executorService.submit(new VPNRunnable(vpnInterface.getFileDescriptor(),
-                    deviceToNetworkUDPQueue, deviceToNetworkTCPQueue, networkToDeviceQueue, getApplicationContext()));
+                    deviceToNetworkUDPQueue, deviceToNetworkTCPQueue, networkToDeviceQueue));
             LocalBroadcastManager.getInstance(this).sendBroadcast(new Intent(BROADCAST_VPN_STATE).putExtra("running", true));
             Log.i(TAG, "Started");
         } catch (IOException e) {
@@ -139,8 +133,6 @@ public class LocalVPNService extends VpnService {
     private static class VPNRunnable implements Runnable {
         private static final String TAG = VPNRunnable.class.getSimpleName();
 
-        private Context context;
-
         private FileDescriptor vpnFileDescriptor;
 
         private ConcurrentLinkedQueue<Packet> deviceToNetworkUDPQueue;
@@ -150,13 +142,11 @@ public class LocalVPNService extends VpnService {
         public VPNRunnable(FileDescriptor vpnFileDescriptor,
                            ConcurrentLinkedQueue<Packet> deviceToNetworkUDPQueue,
                            ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue,
-                           ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue,
-                           Context context) {
+                           ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue) {
             this.vpnFileDescriptor = vpnFileDescriptor;
             this.deviceToNetworkUDPQueue = deviceToNetworkUDPQueue;
             this.deviceToNetworkTCPQueue = deviceToNetworkTCPQueue;
             this.networkToDeviceQueue = networkToDeviceQueue;
-            this.context = context;
         }
 
         @Override
@@ -184,24 +174,7 @@ public class LocalVPNService extends VpnService {
                         bufferToNetwork.flip();
                         Packet packet = new Packet(bufferToNetwork);
 
-                        /*
-                            Впихну пока сюда проверку приложения, потом разберусь куда нужно.
-
-                            Алгоритм связывания пакета с приложением:
-                                1. Из пакета мы знаем ip:port и протокол
-                                2. Зная ip:port - находим подходящее соединее в файле соединений (TCP или UDP):
-                                    /proc/net/tcp, /proc/net/udp
-                                   В этом файле хранится uid приложения, которое это соединение открыло.
-                                3. Зная uid, находим приложение из списка установленных приложений. Информацию можно хранить в виде мапы:
-                                    uid -> метаданные приложения (в том числе имя, иконка и т.д.)
-                         */
-                        List<ParsedProcEntry> connections = ParsedProcEntry.parse("/proc/net/tcp"); // TODO: еще нужно udp
-                        for (ParsedProcEntry p : connections) {
-                            if (packet.ip4Header.sourceAddress.equals(p.getLocalAddress()) && packet.tcpHeader.sourcePort == p.getPort()) {
-                                Log.d(TAG, getAppName(p.getUid()) + ": " + p);
-                            }
-                        }
-
+                        PacketLogger.logPacket(packet);
 
                         if (packet.isUDP()) {
                             deviceToNetworkUDPQueue.offer(packet); // если UDP - добавляем в конец очереди
@@ -242,23 +215,5 @@ public class LocalVPNService extends VpnService {
             }
         }
 
-        private Map<Integer, String> installedAppsInfo;
-
-        private String getAppName(int uid) {
-            //get a list of installed apps.
-            if (installedAppsInfo == null) {
-                installedAppsInfo = new HashMap<>();
-                List<ApplicationInfo> packages = context.getPackageManager().getInstalledApplications(PackageManager.GET_META_DATA);
-
-                for (ApplicationInfo packageInfo : packages) {
-                    installedAppsInfo.put(packageInfo.uid, packageInfo.packageName);
-                    Log.d(TAG, "UID :" + packageInfo.uid);
-                    Log.d(TAG, "Installed package :" + packageInfo.packageName);
-                    Log.d(TAG, "Source dir : " + packageInfo.sourceDir);
-                }
-            }
-
-            return installedAppsInfo.get(uid);
-        }
     }
 }

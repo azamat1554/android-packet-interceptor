@@ -214,7 +214,7 @@ public class Packet {
 
         public int optionsAndPadding;
 
-        private enum TransportProtocol {
+        enum TransportProtocol {
             TCP(6),
             UDP(17),
             Other(0xFF);

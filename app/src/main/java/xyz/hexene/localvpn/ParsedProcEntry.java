@@ -7,7 +7,9 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 
 public class ParsedProcEntry {
@@ -15,6 +17,39 @@ public class ParsedProcEntry {
     private final int port;
     private final String state;
     private final int uid;
+
+    enum TcpState {
+        TCP_ESTABLISHED("01"),
+        TCP_SYN_SENT("02"),
+        TCP_SYN_RECV("03"),
+        TCP_FIN_WAIT1("04"),
+        TCP_FIN_WAIT2("05"),
+        TCP_TIME_WAIT("06"),
+        TCP_CLOSE("07"),
+        TCP_CLOSE_WAIT("08"),
+        TCP_LAST_ACK("09"),
+        TCP_LISTEN("0A"),
+        TCP_CLOSING("0B"),    /* Now a valid state */
+        TCP_MAX_STATES("0C");  /* Leave at the end! */
+
+        private String code;
+        private static Map<String, TcpState> cache = new HashMap<>();
+
+        TcpState(String code) {
+            this.code = code;
+        }
+
+        // bad code
+        static {
+            for (TcpState state : values()) {
+                cache.put(state.code, state);
+            }
+        }
+
+        public static String getHumanReadableState(String code) {
+            return cache.get(code) + "(" + code + ")";
+        }
+    }
 
     private ParsedProcEntry(InetAddress addr, int port, String state, int uid) {
         this.localAddress = addr;
@@ -51,7 +86,7 @@ public class ParsedProcEntry {
                             + " columns of output " + fields);
                 }
 
-                String state = fields[3];
+                String state = procFilePath.contains("tcp") ? TcpState.getHumanReadableState(fields[3]) : fields[3];
                 int uid = Integer.parseInt(fields[7]);
                 InetAddress localIp = addrToInet(fields[1].split(":")[0]);
                 int localPort = Integer.parseInt(fields[1].split(":")[1], 16);

@@ -30,8 +30,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import xyz.hexene.localvpn.TCB.TCBStatus;
 
 /**
- * Насколько я понял, этот поток занимается обработкой
- * трафика, приходящего из сети.
+ * Этот класс выполняет то же что и TCPOutput, только что-то вроде отложенной
+ * обработки, если ответ не пришел сразу, тогда нужно подождать ответа от сервера.
+ * Может поэтому он называется TCPInput, - типа в ожидании ввода.
  *
  */
 public class TCPInput implements Runnable {
@@ -42,7 +43,7 @@ public class TCPInput implements Runnable {
     private Selector selector;
 
     public TCPInput(ConcurrentLinkedQueue<ByteBuffer> outputQueue, Selector selector) {
-        this.outputQueue = outputQueue;
+        this.outputQueue = outputQueue; // входящий траффик
         this.selector = selector;
     }
 

@@ -153,7 +153,8 @@ public class LocalVPNService extends VpnService {
         public void run() {
             Log.i(TAG, "Started");
 
-            // что имеется ввиду под input/output??? Входящий/Исходящий трафик?
+            // из vpnInput читются пакеты, которые отправляют приложения - исходящий трафик
+            // в vpnOutput пишутся пакеты, которые ответил сервир - входящий трафик
             FileChannel vpnInput = new FileInputStream(vpnFileDescriptor).getChannel();
             FileChannel vpnOutput = new FileOutputStream(vpnFileDescriptor).getChannel();
 
@@ -163,7 +164,7 @@ public class LocalVPNService extends VpnService {
                 boolean dataReceived;
                 while (!Thread.interrupted()) {
                     if (dataSent)
-                        bufferToNetwork = ByteBufferPool.acquire();
+                        bufferToNetwork = ByteBufferPool.acquire(); // вот буфер здесь создается.
                     else
                         bufferToNetwork.clear();
 
@@ -177,9 +178,9 @@ public class LocalVPNService extends VpnService {
                         PacketLogger.logPacket(packet);
 
                         if (packet.isUDP()) {
-                            deviceToNetworkUDPQueue.offer(packet); // если UDP - добавляем в конец очереди
+                            deviceToNetworkUDPQueue.offer(packet);
                         } else if (packet.isTCP()) {
-                            deviceToNetworkTCPQueue.offer(packet); // если TCP - добавляем пакет в конец TCP очереди
+                            deviceToNetworkTCPQueue.offer(packet);
                         } else {
                             Log.w(TAG, "Unknown packet type");
                             Log.w(TAG, packet.ip4Header.toString());
@@ -192,8 +193,14 @@ public class LocalVPNService extends VpnService {
                     ByteBuffer bufferFromNetwork = networkToDeviceQueue.poll(); // считывает
                     if (bufferFromNetwork != null) {
                         bufferFromNetwork.flip();
-                        while (bufferFromNetwork.hasRemaining()) // здесь можно логировать входящий трафик, насколько я понял
-                            vpnOutput.write(bufferFromNetwork); // отправляет данные из буфера в файловый дескриктор - эмулятор сетевого интерфейса TUN/TAP
+
+                        while (bufferFromNetwork.hasRemaining()) {
+                            vpnOutput.write(bufferFromNetwork);
+
+                            // TODO Здесь нужно логировать пакеты, которые уходят в приложение.
+                            // Но парсить буфер второй раз не рационально. Нужно придумать как передать сюда пакеты.
+
+                        }
                         dataReceived = true;
 
                         ByteBufferPool.release(bufferFromNetwork);

@@ -32,7 +32,10 @@ import xyz.hexene.localvpn.Packet.TCPHeader;
 import xyz.hexene.localvpn.TCB.TCBStatus;
 
 /**
- * Этот поток выполняют работы TCP сервера.
+ * В этом классе выполянется отправка исходящих пакетов в сеть, и обработка ответов о статусе соедидения и получении пакетов.
+ * В конечном счете на основании ответа из сети формируется пакет, который помещяется в очередь пакетов,
+ * которые будут напрявлены в приложение.
+ *
  * Отправляет ответы в сеть.
  */
 public class TCPOutput implements Runnable {
@@ -53,8 +56,8 @@ public class TCPOutput implements Runnable {
      */
     public TCPOutput(ConcurrentLinkedQueue<Packet> inputQueue, ConcurrentLinkedQueue<ByteBuffer> outputQueue,
                      Selector selector, LocalVPNService vpnService) {
-        this.inputQueue = inputQueue; // deviceToNetworkTCPQueue - сюда записываются пакеты прочитанные из канала
-        this.outputQueue = outputQueue; // networkToDeviceQueue
+        this.inputQueue = inputQueue; // deviceToNetworkTCPQueue - сюда записываются пакеты прочитанные из канала - исходящий tcp траффик
+        this.outputQueue = outputQueue; // networkToDeviceQueue - входящий трафик из интернета
         this.selector = selector;
         this.vpnService = vpnService;
     }
@@ -78,9 +81,9 @@ public class TCPOutput implements Runnable {
                 if (currentThread.isInterrupted())
                     break;
 
-                ByteBuffer payloadBuffer = currentPacket.backingBuffer;
-                currentPacket.backingBuffer = null;
-                ByteBuffer responseBuffer = ByteBufferPool.acquire(); // просто создает буфер или берез ранее созданный
+                ByteBuffer payloadBuffer = currentPacket.backingBuffer; // Этот будеф откуда сюда попадает.
+                currentPacket.backingBuffer = null; // Почему обнуляется буфер? Может чтобы переиспользовать.
+                ByteBuffer responseBuffer = ByteBufferPool.acquire(); // просто создает буфер или переиспользует закэшированный
 
                 InetAddress destinationAddress = currentPacket.ip4Header.destinationAddress;
 
@@ -90,7 +93,7 @@ public class TCPOutput implements Runnable {
 
                 String ipAndPort = destinationAddress.getHostAddress() + ":" +
                         destinationPort + ":" + sourcePort;
-                TCB tcb = TCB.getTCB(ipAndPort); // кэш сокетов: ключ -
+                TCB tcb = TCB.getTCB(ipAndPort); // кэш соединений
                 if (tcb == null)
                     initializeConnection(ipAndPort, destinationAddress, destinationPort,
                             currentPacket, tcpHeader, responseBuffer);
@@ -124,7 +127,8 @@ public class TCPOutput implements Runnable {
         if (tcpHeader.isSYN()) {
             SocketChannel outputChannel = SocketChannel.open();
             outputChannel.configureBlocking(false);
-            // Чтобы НЕ перехватывать трафик нашего приложения, иключаем сокет из под VPN.
+            // Чтобы исключить сокет из под VPN.
+            // В противном случает обработанные пакеты снова будут перехватываться, и так по кругу.
             vpnService.protect(outputChannel.socket());
 
             TCB tcb = new TCB(ipAndPort, random.nextInt(Short.MAX_VALUE + 1), tcpHeader.sequenceNumber, tcpHeader.sequenceNumber + 1,
@@ -132,7 +136,7 @@ public class TCPOutput implements Runnable {
             TCB.putTCB(ipAndPort, tcb);
 
             try {
-                outputChannel.connect(new InetSocketAddress(destinationAddress, destinationPort));
+                outputChannel.connect(new InetSocketAddress(destinationAddress, destinationPort)); // здесь отправляется начальный SYN, я полагаю
                 if (outputChannel.finishConnect()) {
                     tcb.status = TCBStatus.SYN_RECEIVED;
                     // TODO: Set MSS for receiving larger packets from the device
@@ -214,7 +218,7 @@ public class TCPOutput implements Runnable {
             // Forward to remote server
             try {
                 while (payloadBuffer.hasRemaining())
-                    outputChannel.write(payloadBuffer);
+                    outputChannel.write(payloadBuffer); // отправляет данные в сеть
             } catch (IOException e) {
                 Log.e(TAG, "Network write error: " + tcb.ipAndPort, e);
                 sendRST(tcb, payloadSize, responseBuffer);

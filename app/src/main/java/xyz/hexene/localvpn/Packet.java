@@ -101,7 +101,7 @@ public class Packet {
         // Reset header size, since we don't need options
         byte dataOffset = (byte) (TCP_HEADER_SIZE << 2);
         tcpHeader.dataOffsetAndReserved = dataOffset;
-        backingBuffer.put(IP4_HEADER_SIZE + 12, dataOffset); // запись длины заголовка - 5 32-битных слов
+        backingBuffer.put(IP4_HEADER_SIZE + 12, dataOffset); // запись длины заголовка - пять 32-битных слов
 
         updateTCPChecksum(payloadSize);
 

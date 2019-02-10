@@ -50,7 +50,7 @@ public class LocalVPNService extends VpnService {
 
     private ConcurrentLinkedQueue<Packet> deviceToNetworkUDPQueue;
     private ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue;
-    private ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue;
+    private ConcurrentLinkedQueue<Packet> networkToDeviceQueue;
     private ExecutorService executorService;
 
     private Selector udpSelector;
@@ -137,12 +137,12 @@ public class LocalVPNService extends VpnService {
 
         private ConcurrentLinkedQueue<Packet> deviceToNetworkUDPQueue;
         private ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue;
-        private ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue;
+        private ConcurrentLinkedQueue<Packet> networkToDeviceQueue;
 
         public VPNRunnable(FileDescriptor vpnFileDescriptor,
                            ConcurrentLinkedQueue<Packet> deviceToNetworkUDPQueue,
                            ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue,
-                           ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue) {
+                           ConcurrentLinkedQueue<Packet> networkToDeviceQueue) {
             this.vpnFileDescriptor = vpnFileDescriptor;
             this.deviceToNetworkUDPQueue = deviceToNetworkUDPQueue;
             this.deviceToNetworkTCPQueue = deviceToNetworkTCPQueue;
@@ -190,20 +190,18 @@ public class LocalVPNService extends VpnService {
                         dataSent = false;
                     }
 
-                    ByteBuffer bufferFromNetwork = networkToDeviceQueue.poll(); // считывает
-                    if (bufferFromNetwork != null) {
-                        bufferFromNetwork.flip();
+                    Packet packetFromNetwork = networkToDeviceQueue.poll(); // считывает
+                    if (packetFromNetwork != null && packetFromNetwork.backingBuffer != null) {
+                        ByteBuffer backingBuffer = packetFromNetwork.backingBuffer;
+                        backingBuffer.flip();
 
-                        while (bufferFromNetwork.hasRemaining()) {
-                            vpnOutput.write(bufferFromNetwork);
-
-                            // TODO Здесь нужно логировать пакеты, которые уходят в приложение.
-                            // Но парсить буфер второй раз не рационально. Нужно придумать как передать сюда пакеты.
-
+                        while (backingBuffer.hasRemaining()) {
+                            vpnOutput.write(backingBuffer);
+                            PacketLogger.logPacket(packetFromNetwork);
                         }
                         dataReceived = true;
 
-                        ByteBufferPool.release(bufferFromNetwork);
+                        ByteBufferPool.release(backingBuffer);
                     } else {
                         dataReceived = false;
                     }

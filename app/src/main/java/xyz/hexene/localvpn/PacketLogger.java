@@ -64,7 +64,8 @@ public class PacketLogger extends Application {
         // У приложения Simple TCP Test uid == 10059.
         // Во-вторых, логер нужно поставить в другом месте, здесь логируется не все пакеты.
         for (ParsedProcEntry p : connections) {
-            if (packet.ip4Header.sourceAddress.equals(p.getLocalAddress()) && packet.tcpHeader.sourcePort == p.getPort()) {
+            if (packet.ip4Header.sourceAddress.equals(p.getLocalAddress()) && packet.tcpHeader.sourcePort == p.getPort()
+                    || packet.ip4Header.destinationAddress.equals(p.getLocalAddress()) && packet.tcpHeader.destinationPort == p.getPort()) {
                 Log.d(TAG, getAppName(p.getUid()) + ": " + packet.toString());
 
                 // FIXME Временно добавил логирование сырых байтов, для сравнения с wireshark

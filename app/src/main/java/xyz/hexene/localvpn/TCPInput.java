@@ -30,19 +30,17 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import xyz.hexene.localvpn.TCB.TCBStatus;
 
 /**
- * Этот класс выполняет то же что и TCPOutput, только что-то вроде отложенной
- * обработки, если ответ не пришел сразу, тогда нужно подождать ответа от сервера.
- * Может поэтому он называется TCPInput, - типа в ожидании ввода.
+ * В этом классе выполняется обработка входящего трафика.
  *
  */
 public class TCPInput implements Runnable {
     private static final String TAG = TCPInput.class.getSimpleName();
     private static final int HEADER_SIZE = Packet.IP4_HEADER_SIZE + Packet.TCP_HEADER_SIZE;
 
-    private ConcurrentLinkedQueue<ByteBuffer> outputQueue;
+    private ConcurrentLinkedQueue<Packet> outputQueue;
     private Selector selector;
 
-    public TCPInput(ConcurrentLinkedQueue<ByteBuffer> outputQueue, Selector selector) {
+    public TCPInput(ConcurrentLinkedQueue<Packet> outputQueue, Selector selector) {
         this.outputQueue = outputQueue; // входящий траффик
         this.selector = selector;
     }
@@ -83,7 +81,7 @@ public class TCPInput implements Runnable {
         TCB tcb = (TCB) key.attachment();
         Packet referencePacket = tcb.referencePacket;
         try {
-            if (tcb.channel.finishConnect()) {
+            if (tcb.channel.finishConnect()) { //FIXME Почему здесь возникает ошибка?
                 keyIterator.remove(); // мне кажется, если возможно, лучше вынести наружу метода, будет очевиднее
                 tcb.status = TCBStatus.SYN_RECEIVED;
 
@@ -91,7 +89,7 @@ public class TCPInput implements Runnable {
                 ByteBuffer responseBuffer = ByteBufferPool.acquire();
                 referencePacket.updateTCPBuffer(responseBuffer, (byte) (Packet.TCPHeader.SYN | Packet.TCPHeader.ACK),
                         tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
-                outputQueue.offer(responseBuffer);
+                outputQueue.offer(referencePacket);
 
                 tcb.mySequenceNum++; // SYN counts as a byte
                 key.interestOps(SelectionKey.OP_READ);
@@ -100,7 +98,7 @@ public class TCPInput implements Runnable {
             Log.e(TAG, "Connection error: " + tcb.ipAndPort, e);
             ByteBuffer responseBuffer = ByteBufferPool.acquire();
             referencePacket.updateTCPBuffer(responseBuffer, (byte) Packet.TCPHeader.RST, 0, tcb.myAcknowledgementNum, 0);
-            outputQueue.offer(responseBuffer);
+            outputQueue.offer(referencePacket);
             TCB.closeTCB(tcb);
         }
     }
@@ -121,7 +119,7 @@ public class TCPInput implements Runnable {
             } catch (IOException e) {
                 Log.e(TAG, "Network read error: " + tcb.ipAndPort, e);
                 referencePacket.updateTCPBuffer(receiveBuffer, (byte) Packet.TCPHeader.RST, 0, tcb.myAcknowledgementNum, 0);
-                outputQueue.offer(receiveBuffer);
+                outputQueue.offer(referencePacket);
                 TCB.closeTCB(tcb);
                 return;
             }
@@ -131,6 +129,8 @@ public class TCPInput implements Runnable {
                 key.interestOps(0);
                 tcb.waitingForNetworkData = false;
 
+                //TODO Кто должен выполнить отправку FIN, ACK??? - Я полагаю, это происходит при закрытии канала.
+                // Где закрывается канал?
                 if (tcb.status != TCBStatus.CLOSE_WAIT) {
                     ByteBufferPool.release(receiveBuffer);
                     return;
@@ -146,7 +146,7 @@ public class TCPInput implements Runnable {
                 tcb.mySequenceNum += readBytes; // Next sequence number
                 receiveBuffer.position(HEADER_SIZE + readBytes);
             }
+            outputQueue.offer(referencePacket);
         }
-        outputQueue.offer(receiveBuffer);
     }
 }

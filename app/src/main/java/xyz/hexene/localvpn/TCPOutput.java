@@ -32,9 +32,9 @@ import xyz.hexene.localvpn.Packet.TCPHeader;
 import xyz.hexene.localvpn.TCB.TCBStatus;
 
 /**
- * В этом классе выполянется отправка исходящих пакетов в сеть, и обработка ответов о статусе соедидения и получении пакетов.
- * В конечном счете на основании ответа из сети формируется пакет, который помещяется в очередь пакетов,
- * которые будут напрявлены в приложение.
+ * В этом классе выполянется отправка исходящих пакетов в сеть.
+ * И формируются пакеты ответов сервера (Например: ACK), которые помещяется в очередь пакетов,
+ * и в дальшем будут напрявлены в приложение.
  *
  * Отправляет ответы в сеть.
  */
@@ -43,7 +43,7 @@ public class TCPOutput implements Runnable {
 
     private LocalVPNService vpnService;
     private ConcurrentLinkedQueue<Packet> inputQueue;
-    private ConcurrentLinkedQueue<ByteBuffer> outputQueue;
+    private ConcurrentLinkedQueue<Packet> outputQueue;
     private Selector selector;
 
     private Random random = new Random();
@@ -54,7 +54,7 @@ public class TCPOutput implements Runnable {
      * @param selector
      * @param vpnService
      */
-    public TCPOutput(ConcurrentLinkedQueue<Packet> inputQueue, ConcurrentLinkedQueue<ByteBuffer> outputQueue,
+    public TCPOutput(ConcurrentLinkedQueue<Packet> inputQueue, ConcurrentLinkedQueue<Packet> outputQueue,
                      Selector selector, LocalVPNService vpnService) {
         this.inputQueue = inputQueue; // deviceToNetworkTCPQueue - сюда записываются пакеты прочитанные из канала - исходящий tcp траффик
         this.outputQueue = outputQueue; // networkToDeviceQueue - входящий трафик из интернета
@@ -158,7 +158,7 @@ public class TCPOutput implements Runnable {
             currentPacket.updateTCPBuffer(responseBuffer, (byte) TCPHeader.RST,
                     0, tcpHeader.sequenceNumber + 1, 0);
         }
-        outputQueue.offer(responseBuffer);
+        outputQueue.offer(currentPacket);
     }
 
     private void processDuplicateSYN(TCB tcb, TCPHeader tcpHeader, ByteBuffer responseBuffer) {
@@ -177,7 +177,7 @@ public class TCPOutput implements Runnable {
             tcb.myAcknowledgementNum = tcpHeader.sequenceNumber + 1;
             tcb.theirAcknowledgementNum = tcpHeader.acknowledgementNumber;
 
-            if (tcb.waitingForNetworkData) {
+            if (tcb.waitingForNetworkData) { // когда приложение решило закрыть соединение
                 tcb.status = TCBStatus.CLOSE_WAIT;
                 referencePacket.updateTCPBuffer(responseBuffer, (byte) TCPHeader.ACK,
                         tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
@@ -187,8 +187,8 @@ public class TCPOutput implements Runnable {
                         tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
                 tcb.mySequenceNum++; // FIN counts as a byte
             }
+            outputQueue.offer(referencePacket);
         }
-        outputQueue.offer(responseBuffer);
     }
 
     private void processACK(TCB tcb, TCPHeader tcpHeader, ByteBuffer payloadBuffer, ByteBuffer responseBuffer) throws IOException {
@@ -230,13 +230,14 @@ public class TCPOutput implements Runnable {
             tcb.theirAcknowledgementNum = tcpHeader.acknowledgementNumber;
             Packet referencePacket = tcb.referencePacket;
             referencePacket.updateTCPBuffer(responseBuffer, (byte) TCPHeader.ACK, tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
+            outputQueue.offer(referencePacket);
         }
-        outputQueue.offer(responseBuffer);
     }
 
     private void sendRST(TCB tcb, int prevPayloadSize, ByteBuffer buffer) {
-        tcb.referencePacket.updateTCPBuffer(buffer, (byte) TCPHeader.RST, 0, tcb.myAcknowledgementNum + prevPayloadSize, 0);
-        outputQueue.offer(buffer);
+        Packet referencePacket = tcb.referencePacket;
+        referencePacket.updateTCPBuffer(buffer, (byte) TCPHeader.RST, 0, tcb.myAcknowledgementNum + prevPayloadSize, 0);
+        outputQueue.offer(referencePacket);
         TCB.closeTCB(tcb);
     }
 

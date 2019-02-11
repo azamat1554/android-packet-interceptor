@@ -175,7 +175,7 @@ public class LocalVPNService extends VpnService {
                         bufferToNetwork.flip();
                         Packet packet = new Packet(bufferToNetwork);
 
-                        PacketLogger.logPacket(packet);
+                        Log.d("OUTPUT", packet.toString());
 
                         if (packet.isUDP()) {
                             deviceToNetworkUDPQueue.offer(packet);
@@ -198,8 +198,12 @@ public class LocalVPNService extends VpnService {
                             vpnOutput.write(bufferFromNetwork);
 
                             // TODO Здесь нужно логировать пакеты, которые уходят в приложение.
-                            // Но парсить буфер второй раз не рационально. Нужно придумать как передать сюда пакеты.
-
+                            // Парсить буфер второй раз не рационально. Нужно придумать как передать сюда пакеты.
+                            // buffer.flip()
+                            int HEADER_LENGTH = 40;
+                            byte[] headerBytes = new byte[HEADER_LENGTH];
+                            System.arraycopy(bufferFromNetwork.array(), 4, headerBytes, 0, HEADER_LENGTH);
+                            Log.d("INPUT", new Packet(ByteBuffer.wrap(headerBytes)).toString());
                         }
                         dataReceived = true;
 

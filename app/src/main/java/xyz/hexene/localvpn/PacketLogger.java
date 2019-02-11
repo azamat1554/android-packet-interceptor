@@ -23,8 +23,6 @@ public class PacketLogger extends Application {
 
     private static final String TAG = PacketLogger.class.getName();
 
-    private static PacketLogger packetLogger;
-
     private static SparseArray<String> installedAppsNames;
 
     @Override
@@ -68,11 +66,11 @@ public class PacketLogger extends Application {
                 Log.d(TAG, getAppName(p.getUid()) + ": " + packet.toString());
 
                 // FIXME Временно добавил логирование сырых байтов, для сравнения с wireshark
-                StringBuilder sb = new StringBuilder();
-                for (byte b : Arrays.copyOf(packet.backingBuffer.array(), packet.backingBuffer.limit())) {
-                    sb.append(String.format("%02X ", b));
-                }
-                Log.i(TAG, "INPUT: " + sb.toString());
+//                StringBuilder sb = new StringBuilder();
+//                for (byte b : Arrays.copyOf(packet.backingBuffer.array(), packet.backingBuffer.limit())) {
+//                    sb.append(String.format("%02X ", b));
+//                }
+//                Log.i(TAG, "INPUT: " + sb.toString());
             }
         }
     }

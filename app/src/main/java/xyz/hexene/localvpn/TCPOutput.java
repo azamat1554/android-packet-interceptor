@@ -123,12 +123,12 @@ public class TCPOutput implements Runnable {
     private void initializeConnection(String ipAndPort, InetAddress destinationAddress, int destinationPort,
                                       Packet currentPacket, TCPHeader tcpHeader, ByteBuffer responseBuffer)
             throws IOException {
-        currentPacket.swapSourceAndDestination();
+        currentPacket.swapSourceAndDestination(); // Такое ощущение, что эта перестановка влияет только на поля пакета, а буфер не меняется.
         if (tcpHeader.isSYN()) {
             SocketChannel outputChannel = SocketChannel.open();
             outputChannel.configureBlocking(false);
             // Чтобы исключить сокет из под VPN.
-            // В противном случает обработанные пакеты снова будут перехватываться, и так по кругу.
+            // В противном случае, обработанные пакеты снова будут перехватываться, и так по кругу.
             vpnService.protect(outputChannel.socket());
 
             TCB tcb = new TCB(ipAndPort, random.nextInt(Short.MAX_VALUE + 1), tcpHeader.sequenceNumber, tcpHeader.sequenceNumber + 1,

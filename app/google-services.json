@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "1054196321550",
+    "firebase_url": "https://packet-capture-77e88.firebaseio.com",
+    "project_id": "packet-capture-77e88",
+    "storage_bucket": "packet-capture-77e88.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1054196321550:android:95e6802495496919",
+        "android_client_info": {
+          "package_name": "xyz.hexene.localvpn"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1054196321550-hpti7l2cbc076rq4f5iba3hajled2l3p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "xyz.hexene.localvpn",
+            "certificate_hash": "351154efd0c84012f15245778ae70ebc1e87e2ab"
+          }
+        },
+        {
+          "client_id": "1054196321550-sd3envi9ithn4o5sthjqokccqis3p94m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBCI_0hqINiO3VJDUvRz8uevTTmHrYnqX8"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 2,
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1054196321550-sd3envi9ithn4o5sthjqokccqis3p94m.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

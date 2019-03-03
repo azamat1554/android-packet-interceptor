@@ -108,6 +108,7 @@ public class LocalVPNService extends VpnService {
         isRunning = false;
         executorService.shutdownNow();
         cleanup();
+        PacketLogger.flush(); // Отправляет оставшиеся пакеты в firestore
         Log.i(TAG, "Stopped");
     }
 
@@ -139,7 +140,7 @@ public class LocalVPNService extends VpnService {
         private ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue;
         private ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue;
 
-        public VPNRunnable(FileDescriptor vpnFileDescriptor,
+        VPNRunnable(FileDescriptor vpnFileDescriptor,
                            ConcurrentLinkedQueue<Packet> deviceToNetworkUDPQueue,
                            ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue,
                            ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue) {
@@ -175,7 +176,9 @@ public class LocalVPNService extends VpnService {
                         bufferToNetwork.flip();
                         Packet packet = new Packet(bufferToNetwork);
 
-                        Log.d("OUTPUT", packet.toString());
+//                        Log.d("OUTPUT", packet.toString());
+                        PacketLogger.logPacket(packet);
+
 
                         if (packet.isUDP()) {
                             deviceToNetworkUDPQueue.offer(packet);

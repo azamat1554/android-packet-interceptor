@@ -212,7 +212,7 @@ public class Packet {
         public InetAddress sourceAddress;
         public InetAddress destinationAddress;
 
-        public int optionsAndPadding;
+        public byte[] optionsAndPadding;
 
         enum TransportProtocol {
             TCP(6),
@@ -262,7 +262,11 @@ public class Packet {
             buffer.get(addressBytes, 0, 4);
             this.destinationAddress = InetAddress.getByAddress(addressBytes);
 
-            //this.optionsAndPadding = buffer.getInt();
+            int optionsLength = headerLength - IP4_HEADER_SIZE;
+            if (optionsLength > 0) {
+                this.optionsAndPadding = new byte[optionsLength];
+                buffer.get(this.optionsAndPadding, 0, optionsLength);
+            }
         }
 
         public void fillHeader(ByteBuffer buffer) {
@@ -299,7 +303,7 @@ public class Packet {
     }
 
     public static class TCPHeader {
-        public static final int FIN = 0x01; //TODO мне кажется, лучше в виде байтов хранить флаги
+        public static final int FIN = 0x01;
         public static final int SYN = 0x02;
         public static final int RST = 0x04;
         public static final int PSH = 0x08;

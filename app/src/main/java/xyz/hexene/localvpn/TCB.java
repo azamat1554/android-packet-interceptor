@@ -30,7 +30,8 @@ import java.util.Map;
 public class TCB {
     public String ipAndPort;
 
-    public long mySequenceNum, theirSequenceNum;
+    private long mySequenceNum;
+    public long theirSequenceNum;
     public long myAcknowledgementNum, theirAcknowledgementNum;
     public TCBStatus status;
 
@@ -106,5 +107,17 @@ public class TCB {
         } catch (IOException e) {
             // Ignore
         }
+    }
+
+    public long getMySequenceNum() {
+        return mySequenceNum;
+    }
+
+    public void setMySequenceNum(long mySequenceNum) {
+        this.mySequenceNum = mySequenceNum;
+    }
+
+    public void addMySequenceNum(long append) {
+        mySequenceNum += append;
     }
 }

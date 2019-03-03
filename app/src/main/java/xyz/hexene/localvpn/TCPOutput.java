@@ -35,7 +35,7 @@ import xyz.hexene.localvpn.TCB.TCBStatus;
  * В этом классе выполянется отправка исходящих пакетов в сеть, и обработка ответов о статусе соедидения и получении пакетов.
  * В конечном счете на основании ответа из сети формируется пакет, который помещяется в очередь пакетов,
  * которые будут напрявлены в приложение.
- *
+ * <p>
  * Отправляет ответы в сеть.
  */
 public class TCPOutput implements Runnable {
@@ -73,6 +73,7 @@ public class TCPOutput implements Runnable {
                 // TODO: Block when not connected
                 do {
                     currentPacket = inputQueue.poll();
+//                    Log.d(TAG, "Get packet from queue");
                     if (currentPacket != null)
                         break;
                     Thread.sleep(10);
@@ -93,27 +94,49 @@ public class TCPOutput implements Runnable {
 
                 String ipAndPort = destinationAddress.getHostAddress() + ":" +
                         destinationPort + ":" + sourcePort;
+
+
+//                Log.d(TAG, notEqualTag + String.format("run: destIp:destPort:srcPort = %s; seq = %d; payloadLength = %d; next expected seq: %d",
+//                        ipAndPort, currentPacket.tcpHeader.sequenceNumber, payloadLength, nextExpectedSequence)
+//                );
+
                 TCB tcb = TCB.getTCB(ipAndPort); // кэш соединений
-                if (tcb == null)
+                if (tcb == null) {
+                    Log.d(TAG, "run: tcb == null");
+
                     initializeConnection(ipAndPort, destinationAddress, destinationPort,
                             currentPacket, tcpHeader, responseBuffer);
-                else if (tcpHeader.isSYN())
+                } else if (tcpHeader.isSYN()) {
+                    Log.d(TAG, "run: tcp is SYN");
+
                     processDuplicateSYN(tcb, tcpHeader, responseBuffer);
-                else if (tcpHeader.isRST())
+                } else if (tcpHeader.isRST()) {
+                    Log.d(TAG, "run: tcp is RST");
+
                     closeCleanly(tcb, responseBuffer);
-                else if (tcpHeader.isFIN())
+                } else if (tcpHeader.isFIN()) {
+                    Log.d(TAG, "run: tcp is FIN");
+
                     processFIN(tcb, tcpHeader, responseBuffer);
-                else if (tcpHeader.isACK())
+                } else if (tcpHeader.isACK()) {
+                    Log.d(TAG, "run: tcp is ACK");
+
                     processACK(tcb, tcpHeader, payloadBuffer, responseBuffer);
+                }
 
                 // XXX: cleanup later
-                if (responseBuffer.position() == 0)
+                if (responseBuffer.position() == 0) {
+                    Log.d(TAG, "run: clean empty buffer");
+
                     ByteBufferPool.release(responseBuffer);
+                }
                 ByteBufferPool.release(payloadBuffer);
             }
-        } catch (InterruptedException e) {
+        } catch (
+                InterruptedException e) {
             Log.i(TAG, "Stopping");
-        } catch (IOException e) {
+        } catch (
+                IOException e) {
             Log.e(TAG, e.toString(), e);
         } finally {
             TCB.closeAll();
@@ -133,18 +156,27 @@ public class TCPOutput implements Runnable {
 
             TCB tcb = new TCB(ipAndPort, random.nextInt(Short.MAX_VALUE + 1), tcpHeader.sequenceNumber, tcpHeader.sequenceNumber + 1,
                     tcpHeader.acknowledgementNumber, outputChannel, currentPacket);
+
+
             TCB.putTCB(ipAndPort, tcb);
+            Log.d(TAG, "initializeConnection: Create TCB");
 
             try {
                 outputChannel.connect(new InetSocketAddress(destinationAddress, destinationPort)); // здесь отправляется начальный SYN, я полагаю
+                Log.d(TAG, "initializeConnection: open connection");
+
                 if (outputChannel.finishConnect()) {
+                    Log.d(TAG, "initializeConnection: finish connection");
+
                     tcb.status = TCBStatus.SYN_RECEIVED;
                     // TODO: Set MSS for receiving larger packets from the device
                     currentPacket.updateTCPBuffer(responseBuffer, (byte) (TCPHeader.SYN | TCPHeader.ACK),
-                            tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
-                    tcb.mySequenceNum++; // SYN counts as a byte
+                            tcb.getMySequenceNum(), tcb.myAcknowledgementNum, 0);
+                    tcb.addMySequenceNum(1); // SYN counts as a byte
                 } else {
                     tcb.status = TCBStatus.SYN_SENT;
+                    Log.d(TAG, "initializeConnection: sent TCP, but not finished connection");
+
                     selector.wakeup();
                     tcb.selectionKey = outputChannel.register(selector, SelectionKey.OP_CONNECT, tcb);
                     return;
@@ -155,15 +187,21 @@ public class TCPOutput implements Runnable {
                 TCB.closeTCB(tcb);
             }
         } else {
+            Log.d(TAG, "initializeConnection: reset packet");
+
             currentPacket.updateTCPBuffer(responseBuffer, (byte) TCPHeader.RST,
                     0, tcpHeader.sequenceNumber + 1, 0);
         }
         outputQueue.offer(responseBuffer);
+        Log.d(TAG, "initializeConnection: add buffer to queue");
+
     }
 
     private void processDuplicateSYN(TCB tcb, TCPHeader tcpHeader, ByteBuffer responseBuffer) {
         synchronized (tcb) {
             if (tcb.status == TCBStatus.SYN_SENT) {
+                Log.d(TAG, "processDuplicateSYN: in synchronized block");
+
                 tcb.myAcknowledgementNum = tcpHeader.sequenceNumber + 1;
                 return;
             }
@@ -179,13 +217,17 @@ public class TCPOutput implements Runnable {
 
             if (tcb.waitingForNetworkData) {
                 tcb.status = TCBStatus.CLOSE_WAIT;
+                Log.d(TAG, "processFIN: set CLOSE_WAIT status");
+
                 referencePacket.updateTCPBuffer(responseBuffer, (byte) TCPHeader.ACK,
-                        tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
+                        tcb.getMySequenceNum(), tcb.myAcknowledgementNum, 0);
             } else {
                 tcb.status = TCBStatus.LAST_ACK;
+                Log.d(TAG, "processFIN: set LAST_ACK status");
+
                 referencePacket.updateTCPBuffer(responseBuffer, (byte) (TCPHeader.FIN | TCPHeader.ACK),
-                        tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
-                tcb.mySequenceNum++; // FIN counts as a byte
+                        tcb.getMySequenceNum(), tcb.myAcknowledgementNum, 0);
+                tcb.addMySequenceNum(1); // FIN counts as a byte
             }
         }
         outputQueue.offer(responseBuffer);
@@ -198,6 +240,8 @@ public class TCPOutput implements Runnable {
             SocketChannel outputChannel = tcb.channel;
             if (tcb.status == TCBStatus.SYN_RECEIVED) {
                 tcb.status = TCBStatus.ESTABLISHED;
+                Log.d(TAG, "processACK: status ESTABLISHED, before selector wakeup");
+
 
                 selector.wakeup();
                 tcb.selectionKey = outputChannel.register(selector, SelectionKey.OP_READ, tcb);
@@ -207,9 +251,15 @@ public class TCPOutput implements Runnable {
                 return;
             }
 
-            if (payloadSize == 0) return; // Empty ACK, ignore
+            if (payloadSize == 0) {
+                Log.d(TAG, "processACK: empty ACK");
+
+                return; // Empty ACK, ignore
+            }
 
             if (!tcb.waitingForNetworkData) {
+                Log.d(TAG, "processACK: waitingForNetworkData == false");
+
                 selector.wakeup();
                 tcb.selectionKey.interestOps(SelectionKey.OP_READ);
                 tcb.waitingForNetworkData = true;
@@ -217,8 +267,13 @@ public class TCPOutput implements Runnable {
 
             // Forward to remote server
             try {
-                while (payloadBuffer.hasRemaining())
+                while (payloadBuffer.hasRemaining()) {
+                    Log.d(TAG, "processACK: send buffer to network. buffer position: " + payloadBuffer.position());
+
+                    //TODO Данные пишутся с 40 позиции. Откуда берутся первые 40 байт? Они не нужны, ведь сокет сам реализует TCP/IP.
+
                     outputChannel.write(payloadBuffer); // отправляет данные в сеть
+                }
             } catch (IOException e) {
                 Log.e(TAG, "Network write error: " + tcb.ipAndPort, e);
                 sendRST(tcb, payloadSize, responseBuffer);
@@ -226,16 +281,29 @@ public class TCPOutput implements Runnable {
             }
 
             // TODO: We don't expect out-of-order packets, but verify
+//            if (tcb.myAcknowledgementNum != tcpHeader.sequenceNumber || tcb.getMySequenceNum() != tcpHeader.acknowledgementNumber) {
+//                Log.d(TAG, "ORDER IS BROKEN.\n"
+//                        + "destIp:destPort:srcPort = " + tcb.ipAndPort
+//                        + String.format("FROM APP -> seq: %d, ack %d \n", tcpHeader.sequenceNumber, tcpHeader.acknowledgementNumber)
+//                        + String.format("FROM SERVER -> seq: %d, ack %d", tcb.getMySequenceNum(), tcb.myAcknowledgementNum));
+//            }
+
+
+            // Ошибка то ли при отправке пакета приложению, то ли при приеме из сети.
             tcb.myAcknowledgementNum = tcpHeader.sequenceNumber + payloadSize;
             tcb.theirAcknowledgementNum = tcpHeader.acknowledgementNumber;
             Packet referencePacket = tcb.referencePacket;
-            referencePacket.updateTCPBuffer(responseBuffer, (byte) TCPHeader.ACK, tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
+            Log.d(TAG, "processACK: end of method");
+
+            referencePacket.updateTCPBuffer(responseBuffer, (byte) TCPHeader.ACK, tcb.getMySequenceNum(), tcb.myAcknowledgementNum, 0);
         }
         outputQueue.offer(responseBuffer);
     }
 
     private void sendRST(TCB tcb, int prevPayloadSize, ByteBuffer buffer) {
         tcb.referencePacket.updateTCPBuffer(buffer, (byte) TCPHeader.RST, 0, tcb.myAcknowledgementNum + prevPayloadSize, 0);
+        Log.d(TAG, "sendRST: add buffer");
+
         outputQueue.offer(buffer);
         TCB.closeTCB(tcb);
     }

@@ -54,10 +54,13 @@ public class TCPInput implements Runnable {
             while (!Thread.interrupted()) {
                 int readyChannels = selector.select();
 
+
                 if (readyChannels == 0) {
                     Thread.sleep(10);
                     continue;
                 }
+                Log.d(TAG, "run: readyChannels == " + readyChannels);
+
 
                 Set<SelectionKey> keys = selector.selectedKeys();
                 Iterator<SelectionKey> keyIterator = keys.iterator();
@@ -65,10 +68,15 @@ public class TCPInput implements Runnable {
                 while (keyIterator.hasNext() && !Thread.interrupted()) {
                     SelectionKey key = keyIterator.next();
                     if (key.isValid()) {
-                        if (key.isConnectable())
+                        if (key.isConnectable()) {
+                            Log.d(TAG, "run: key is connectable");
+
                             processConnect(key, keyIterator);
-                        else if (key.isReadable())
+                        } else if (key.isReadable()) {
+                            Log.d(TAG, "run: key is readable");
+
                             processInput(key, keyIterator);
+                        }
                     }
                 }
             }
@@ -84,16 +92,19 @@ public class TCPInput implements Runnable {
         Packet referencePacket = tcb.referencePacket;
         try {
             if (tcb.channel.finishConnect()) {
+                Log.d(TAG, "processConnect: finish connect");
+
                 keyIterator.remove(); // мне кажется, если возможно, лучше вынести наружу метода, будет очевиднее
                 tcb.status = TCBStatus.SYN_RECEIVED;
 
                 // TODO: Set MSS for receiving larger packets from the device
                 ByteBuffer responseBuffer = ByteBufferPool.acquire();
                 referencePacket.updateTCPBuffer(responseBuffer, (byte) (Packet.TCPHeader.SYN | Packet.TCPHeader.ACK),
-                        tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
+                        tcb.getMySequenceNum(), tcb.myAcknowledgementNum, 0);
+
                 outputQueue.offer(responseBuffer);
 
-                tcb.mySequenceNum++; // SYN counts as a byte
+                tcb.addMySequenceNum(1); // SYN counts as a byte
                 key.interestOps(SelectionKey.OP_READ);
             }
         } catch (IOException e) {
@@ -109,6 +120,8 @@ public class TCPInput implements Runnable {
         keyIterator.remove();
         ByteBuffer receiveBuffer = ByteBufferPool.acquire();
         // Leave space for the header
+        // заголовок пакета, который будет отправлен в приложение мы формируем сами,
+        // и он всегда равен 40 байтов.
         receiveBuffer.position(HEADER_SIZE);
 
         TCB tcb = (TCB) key.attachment();
@@ -117,6 +130,8 @@ public class TCPInput implements Runnable {
             SocketChannel inputChannel = (SocketChannel) key.channel();
             int readBytes;
             try {
+                Log.d(TAG, "processInput: try to read input traffic from channel");
+                // Записывает в буфер только данные, заголовок уже заполнен
                 readBytes = inputChannel.read(receiveBuffer);
             } catch (IOException e) {
                 Log.e(TAG, "Network read error: " + tcb.ipAndPort, e);
@@ -132,19 +147,25 @@ public class TCPInput implements Runnable {
                 tcb.waitingForNetworkData = false;
 
                 if (tcb.status != TCBStatus.CLOSE_WAIT) {
+                    Log.d(TAG, "processInput: status != CLOSE_WAIT");
+
                     ByteBufferPool.release(receiveBuffer);
                     return;
                 }
 
                 tcb.status = TCBStatus.LAST_ACK;
-                referencePacket.updateTCPBuffer(receiveBuffer, (byte) Packet.TCPHeader.FIN, tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
-                tcb.mySequenceNum++; // FIN counts as a byte
+                Log.d(TAG, "processInput: set LAST_ACK");
+
+                referencePacket.updateTCPBuffer(receiveBuffer, (byte) Packet.TCPHeader.FIN, tcb.getMySequenceNum(), tcb.myAcknowledgementNum, 0);
+                tcb.addMySequenceNum(1); // FIN counts as a byte
             } else {
-                // XXX: We should ideally be splitting segments by MTU/MSS, but this seems to work without
+                //FIXME XXX: We should ideally be splitting segments by MTU/MSS, but this seems to work without
+                Log.d(TAG, "processInput: buffer has data");
+
                 referencePacket.updateTCPBuffer(receiveBuffer, (byte) (Packet.TCPHeader.PSH | Packet.TCPHeader.ACK),
-                        tcb.mySequenceNum, tcb.myAcknowledgementNum, readBytes);
-                tcb.mySequenceNum += readBytes; // Next sequence number
-                receiveBuffer.position(HEADER_SIZE + readBytes);
+                        tcb.getMySequenceNum(), tcb.myAcknowledgementNum, readBytes);
+                tcb.addMySequenceNum(readBytes); // Next sequence number
+                receiveBuffer.position(HEADER_SIZE + readBytes); // устанавливает позицию в конец пакета, чтобы потом сделать flip.
             }
         }
         outputQueue.offer(receiveBuffer);

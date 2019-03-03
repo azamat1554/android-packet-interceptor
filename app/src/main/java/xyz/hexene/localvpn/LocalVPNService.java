@@ -31,6 +31,10 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.Selector;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -139,6 +143,9 @@ public class LocalVPNService extends VpnService {
         private ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue;
         private ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue;
 
+        private Map<String, List<PacketSequenceDto>> sequenceMap = new HashMap<>();
+
+
         public VPNRunnable(FileDescriptor vpnFileDescriptor,
                            ConcurrentLinkedQueue<Packet> deviceToNetworkUDPQueue,
                            ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue,
@@ -174,12 +181,39 @@ public class LocalVPNService extends VpnService {
                         dataSent = true;
                         bufferToNetwork.flip();
                         Packet packet = new Packet(bufferToNetwork);
+                        Log.d(TAG, "Parse packet.");
 
-                        Log.d("OUTPUT", packet.toString());
+//                        Log.d("OUTPUT", packet.toString());
 
                         if (packet.isUDP()) {
                             deviceToNetworkUDPQueue.offer(packet);
                         } else if (packet.isTCP()) {
+                            int headerLength = packet.ip4Header.headerLength + packet.tcpHeader.headerLength;
+                            int payloadLength = packet.ip4Header.totalLength - headerLength;
+
+                            String ipAndPort = packet.ip4Header.destinationAddress.getHostAddress() + ":" + packet.tcpHeader.sourcePort;
+                            if (!sequenceMap.containsKey(ipAndPort)) {
+                                sequenceMap.put(ipAndPort, new ArrayList<PacketSequenceDto>());
+                            }
+                            List<PacketSequenceDto> dtoList = sequenceMap.get(ipAndPort);
+                            PacketSequenceDto dto = new PacketSequenceDto();
+                            dto.sequenceNumber = packet.tcpHeader.sequenceNumber;
+                            dto.payloadLength = payloadLength;
+                            dto.sumSeqAndPayloadLength = packet.tcpHeader.sequenceNumber + payloadLength;
+                            dto.setFlags(packet);
+                            dto.checksum = packet.tcpHeader.checksum;
+
+                            if (payloadLength == 0 && packet.tcpHeader.isSYN()) {
+                                dto.sumSeqAndPayloadLength++;
+                            }
+
+                            if (dtoList.size() > 1) {
+                                PacketSequenceDto prevDto = dtoList.get(dtoList.size() - 1);
+                                dto.isNotEqualExpectedSeq = packet.tcpHeader.sequenceNumber != prevDto.sumSeqAndPayloadLength;
+                            }
+
+                            dtoList.add(dto);
+
                             deviceToNetworkTCPQueue.offer(packet);
                         } else {
                             Log.w(TAG, "Unknown packet type");
@@ -196,14 +230,16 @@ public class LocalVPNService extends VpnService {
 
                         while (bufferFromNetwork.hasRemaining()) {
                             vpnOutput.write(bufferFromNetwork);
+                            Log.d(TAG, "Write buffer");
+
 
                             // TODO Здесь нужно логировать пакеты, которые уходят в приложение.
                             // Парсить буфер второй раз не рационально. Нужно придумать как передать сюда пакеты.
                             // buffer.flip()
-                            int HEADER_LENGTH = 40;
-                            byte[] headerBytes = new byte[HEADER_LENGTH];
-                            System.arraycopy(bufferFromNetwork.array(), 4, headerBytes, 0, HEADER_LENGTH);
-                            Log.d("INPUT", new Packet(ByteBuffer.wrap(headerBytes)).toString());
+//                            int HEADER_LENGTH = 40;
+//                            byte[] headerBytes = new byte[HEADER_LENGTH];
+//                            System.arraycopy(bufferFromNetwork.array(), 4, headerBytes, 0, HEADER_LENGTH);
+//                            Log.d("INPUT", new Packet(ByteBuffer.wrap(headerBytes)).toString());
                         }
                         dataReceived = true;
 
@@ -223,6 +259,29 @@ public class LocalVPNService extends VpnService {
                 Log.w(TAG, e.toString(), e);
             } finally {
                 closeResources(vpnInput, vpnOutput);
+            }
+        }
+
+
+        private class PacketSequenceDto {
+            long sequenceNumber;
+            long payloadLength;
+            long sumSeqAndPayloadLength;
+            private String flags;
+            long checksum;
+            boolean isNotEqualExpectedSeq;
+
+
+            void setFlags(Packet packet) {
+                StringBuilder sb = new StringBuilder();
+                if (packet.tcpHeader.isFIN()) sb.append(" FIN");
+                if (packet.tcpHeader.isSYN()) sb.append(" SYN");
+                if (packet.tcpHeader.isRST()) sb.append(" RST");
+                if (packet.tcpHeader.isPSH()) sb.append(" PSH");
+                if (packet.tcpHeader.isACK()) sb.append(" ACK");
+                if (packet.tcpHeader.isURG()) sb.append(" URG");
+
+                flags = sb.toString();
             }
         }
 

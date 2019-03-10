@@ -234,9 +234,14 @@ public class TCPOutput implements Runnable {
     }
 
     private void processACK(TCB tcb, TCPHeader tcpHeader, ByteBuffer payloadBuffer, ByteBuffer responseBuffer) throws IOException {
-        int payloadSize = payloadBuffer.limit() - payloadBuffer.position();
+        int payloadSize = payloadBuffer.limit() - payloadBuffer.position(); //FIXME Неправильно считается - Доказано!!!
+        // Возвращет максивальную длину буфера - 16384, это возможно только если limit = 16384, a position = 0.
+        Log.d(TAG, "PAYLOAD_SIZE: " + payloadSize);
 
         synchronized (tcb) {
+            Packet referencePacket = tcb.referencePacket;
+//            Packet.IP4Header ip4Header = referencePacket.ip4Header;
+//            int payloadSize = ip4Header.totalLength - (ip4Header.headerLength + tcpHeader.headerLength);//payloadBuffer.limit() - payloadBuffer.position();
             SocketChannel outputChannel = tcb.channel;
             if (tcb.status == TCBStatus.SYN_RECEIVED) {
                 tcb.status = TCBStatus.ESTABLISHED;
@@ -292,7 +297,6 @@ public class TCPOutput implements Runnable {
             // Ошибка то ли при отправке пакета приложению, то ли при приеме из сети.
             tcb.myAcknowledgementNum = tcpHeader.sequenceNumber + payloadSize;
             tcb.theirAcknowledgementNum = tcpHeader.acknowledgementNumber;
-            Packet referencePacket = tcb.referencePacket;
             Log.d(TAG, "processACK: end of method");
 
             referencePacket.updateTCPBuffer(responseBuffer, (byte) TCPHeader.ACK, tcb.getMySequenceNum(), tcb.myAcknowledgementNum, 0);

@@ -21,18 +21,15 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class ByteBufferPool {
     private static final int BUFFER_SIZE = 16384; // XXX: Is this ideal?
-    private static ConcurrentLinkedQueue<ByteBuffer> pool = new ConcurrentLinkedQueue<>();
+    private static ConcurrentLinkedQueue<ByteBuffer> pool = new ConcurrentLinkedQueue<>(); // в пулл попадают buffer с ненулевой позицией. Как это возможно?
 
-    public static ByteBuffer acquire() {
-        ByteBuffer buffer = pool.poll();
-        if (buffer == null)
-            buffer = ByteBuffer.allocateDirect(BUFFER_SIZE); // Using DirectBuffer for zero-copy
-        return buffer;
+    public synchronized static ByteBuffer acquire() {
+        return ByteBuffer.allocateDirect(BUFFER_SIZE); // Using DirectBuffer for zero-copy
     }
 
     public static void release(ByteBuffer buffer) {
-        buffer.clear();
-        pool.offer(buffer);
+//        buffer.clear();
+//        pool.offer(buffer); // все равно иногда сохраняется буфер с ненулевой позицией. Как это возможно? Непонятно.
     }
 
     public static void clear() {

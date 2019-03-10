@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -143,7 +144,11 @@ public class LocalVPNService extends VpnService {
         private ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue;
         private ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue;
 
-        private Map<String, List<PacketSequenceDto>> sequenceMap = new HashMap<>();
+        enum TrafficType {
+            INPUT, OUTPUT;
+        }
+
+        private Map<String, Map<TrafficType, List<PacketSequenceDto>>> sequenceMap = new HashMap<>();
 
 
         public VPNRunnable(FileDescriptor vpnFileDescriptor,
@@ -170,49 +175,30 @@ public class LocalVPNService extends VpnService {
                 boolean dataSent = true;
                 boolean dataReceived;
                 while (!Thread.interrupted()) {
-                    if (dataSent)
+                    if (dataSent) // что за переменная, возможно в условии косяк.
+                        // я думаю здесь ошибка, из-за того что метод не синхронизирован
+                        // он может вызываться из разных потоков.
                         bufferToNetwork = ByteBufferPool.acquire(); // вот буфер здесь создается.
                     else
-                        bufferToNetwork.clear();
+                        bufferToNetwork.clear(); // нужен ли clear вообще? Ведь если никаких данных не считано, то и буфер не изменился.
 
+                    // иногда позиция в буфере != 0
                     // TODO: Block when not connected
                     int readBytes = vpnInput.read(bufferToNetwork); // пишет данные в буфер из файлового дескриптора
                     if (readBytes > 0) {
                         dataSent = true;
                         bufferToNetwork.flip();
                         Packet packet = new Packet(bufferToNetwork);
-                        Log.d(TAG, "Parse packet.");
+//                        Log.d(TAG, "READ BYTES: " + readBytes);
+//                        Log.d(TAG, "LIMIT: " + bufferToNetwork.limit()); // Иногда readBytes != limit(), почему???
+//                        Log.d(TAG, "Parse packet.");
 
 //                        Log.d("OUTPUT", packet.toString());
 
                         if (packet.isUDP()) {
                             deviceToNetworkUDPQueue.offer(packet);
                         } else if (packet.isTCP()) {
-                            int headerLength = packet.ip4Header.headerLength + packet.tcpHeader.headerLength;
-                            int payloadLength = packet.ip4Header.totalLength - headerLength;
-
-                            String ipAndPort = packet.ip4Header.destinationAddress.getHostAddress() + ":" + packet.tcpHeader.sourcePort;
-                            if (!sequenceMap.containsKey(ipAndPort)) {
-                                sequenceMap.put(ipAndPort, new ArrayList<PacketSequenceDto>());
-                            }
-                            List<PacketSequenceDto> dtoList = sequenceMap.get(ipAndPort);
-                            PacketSequenceDto dto = new PacketSequenceDto();
-                            dto.sequenceNumber = packet.tcpHeader.sequenceNumber;
-                            dto.payloadLength = payloadLength;
-                            dto.sumSeqAndPayloadLength = packet.tcpHeader.sequenceNumber + payloadLength;
-                            dto.setFlags(packet);
-                            dto.checksum = packet.tcpHeader.checksum;
-
-                            if (payloadLength == 0 && packet.tcpHeader.isSYN()) {
-                                dto.sumSeqAndPayloadLength++;
-                            }
-
-                            if (dtoList.size() > 1) {
-                                PacketSequenceDto prevDto = dtoList.get(dtoList.size() - 1);
-                                dto.isNotEqualExpectedSeq = packet.tcpHeader.sequenceNumber != prevDto.sumSeqAndPayloadLength;
-                            }
-
-                            dtoList.add(dto);
+                            addPacketToSequenceMapForInputTraffic(packet);
 
                             deviceToNetworkTCPQueue.offer(packet);
                         } else {
@@ -235,10 +221,12 @@ public class LocalVPNService extends VpnService {
 
                             // TODO Здесь нужно логировать пакеты, которые уходят в приложение.
                             // Парсить буфер второй раз не рационально. Нужно придумать как передать сюда пакеты.
-                            // buffer.flip()
-//                            int HEADER_LENGTH = 40;
-//                            byte[] headerBytes = new byte[HEADER_LENGTH];
-//                            System.arraycopy(bufferFromNetwork.array(), 4, headerBytes, 0, HEADER_LENGTH);
+//                             bufferFromNetwork.flip();
+
+                            int HEADER_LENGTH = 40;
+                            byte[] headerBytes = new byte[HEADER_LENGTH];
+                            System.arraycopy(bufferFromNetwork.array(), 4, headerBytes, 0, HEADER_LENGTH);
+                            addPacketToSequenceMapForOutputTraffic(new Packet(ByteBuffer.wrap(headerBytes)));
 //                            Log.d("INPUT", new Packet(ByteBuffer.wrap(headerBytes)).toString());
                         }
                         dataReceived = true;
@@ -260,6 +248,66 @@ public class LocalVPNService extends VpnService {
             } finally {
                 closeResources(vpnInput, vpnOutput);
             }
+        }
+
+        private void addPacketToSequenceMapForInputTraffic(Packet packet) {
+            int headerLength = packet.ip4Header.headerLength + packet.tcpHeader.headerLength;
+            int payloadLength = packet.ip4Header.totalLength - headerLength;
+
+            String ipAndPort = packet.ip4Header.destinationAddress.getHostAddress() + ":" + packet.tcpHeader.sourcePort;
+            if (!sequenceMap.containsKey(ipAndPort)) {
+                TreeMap<TrafficType, List<PacketSequenceDto>> packetTypeMap = new TreeMap<>();
+                packetTypeMap.put(TrafficType.INPUT, new ArrayList<PacketSequenceDto>());
+                packetTypeMap.put(TrafficType.OUTPUT, new ArrayList<PacketSequenceDto>());
+                sequenceMap.put(ipAndPort, packetTypeMap);
+            }
+            List<PacketSequenceDto> dtoList = sequenceMap.get(ipAndPort).get(TrafficType.INPUT);
+            PacketSequenceDto dto = new PacketSequenceDto();
+            dto.sequenceNumber = packet.tcpHeader.sequenceNumber;
+            dto.payloadLength = payloadLength;
+            dto.sumSeqAndPayloadLength = packet.tcpHeader.sequenceNumber + payloadLength;
+            dto.setFlags(packet);
+            dto.checksum = packet.tcpHeader.checksum;
+
+            if (payloadLength == 0 && packet.tcpHeader.isSYN()) {
+                dto.sumSeqAndPayloadLength++;
+            }
+
+            if (dtoList.size() > 1) {
+                PacketSequenceDto prevDto = dtoList.get(dtoList.size() - 1);
+                dto.isNotEqualExpectedSeq = packet.tcpHeader.sequenceNumber != prevDto.sumSeqAndPayloadLength;
+            }
+
+            dtoList.add(dto);
+        }
+        private void addPacketToSequenceMapForOutputTraffic(Packet packet) {
+            int headerLength = packet.ip4Header.headerLength + packet.tcpHeader.headerLength;
+            int payloadLength = packet.ip4Header.totalLength - headerLength;
+
+            String ipAndPort = packet.ip4Header.sourceAddress.getHostAddress() + ":" + packet.tcpHeader.destinationPort;
+            if (!sequenceMap.containsKey(ipAndPort)) {
+                TreeMap<TrafficType, List<PacketSequenceDto>> packetTypeMap = new TreeMap<>();
+                packetTypeMap.put(TrafficType.INPUT, new ArrayList<PacketSequenceDto>());
+                packetTypeMap.put(TrafficType.OUTPUT, new ArrayList<PacketSequenceDto>());
+                sequenceMap.put(ipAndPort, packetTypeMap);
+            }
+            List<PacketSequenceDto> dtoList = sequenceMap.get(ipAndPort).get(TrafficType.OUTPUT);
+            PacketSequenceDto dto = new PacketSequenceDto();
+            dto.sequenceNumber = packet.tcpHeader.acknowledgementNumber;
+            dto.setFlags(packet);
+//            dto.payloadLength = payloadLength;
+//            dto.checksum = packet.tcpHeader.checksum;
+
+//            if (payloadLength == 0 && packet.tcpHeader.isSYN()) {
+//                dto.sumSeqAndPayloadLength++;
+//            }
+
+//            if (dtoList.size() > 1) {
+//                PacketSequenceDto prevDto = dtoList.get(dtoList.size() - 1);
+//                dto.isNotEqualExpectedSeq = packet.tcpHeader.sequenceNumber != prevDto.sumSeqAndPayloadLength;
+//            }
+
+            dtoList.add(dto);
         }
 
 

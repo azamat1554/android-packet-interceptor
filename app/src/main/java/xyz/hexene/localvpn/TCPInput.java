@@ -88,7 +88,7 @@ public class TCPInput implements Runnable {
                 tcb.status = TCBStatus.SYN_RECEIVED;
 
                 // TODO: Set MSS for receiving larger packets from the device
-                ByteBuffer responseBuffer = ByteBufferPool.acquire();
+                ByteBuffer responseBuffer = ByteBufferFactory.create();
                 referencePacket.updateTCPBuffer(responseBuffer, (byte) (Packet.TCPHeader.SYN | Packet.TCPHeader.ACK),
                         tcb.mySequenceNum, tcb.myAcknowledgementNum, 0);
                 outputQueue.offer(responseBuffer);
@@ -98,7 +98,7 @@ public class TCPInput implements Runnable {
             }
         } catch (IOException e) {
             Log.e(TAG, "Connection error: " + tcb.ipAndPort, e);
-            ByteBuffer responseBuffer = ByteBufferPool.acquire();
+            ByteBuffer responseBuffer = ByteBufferFactory.create();
             referencePacket.updateTCPBuffer(responseBuffer, (byte) Packet.TCPHeader.RST, 0, tcb.myAcknowledgementNum, 0);
             outputQueue.offer(responseBuffer);
             TCB.closeTCB(tcb);
@@ -107,7 +107,7 @@ public class TCPInput implements Runnable {
 
     private void processInput(SelectionKey key, Iterator<SelectionKey> keyIterator) {
         keyIterator.remove();
-        ByteBuffer receiveBuffer = ByteBufferPool.acquire();
+        ByteBuffer receiveBuffer = ByteBufferFactory.create();
         // Leave space for the header
         receiveBuffer.position(HEADER_SIZE);
 
@@ -132,7 +132,6 @@ public class TCPInput implements Runnable {
                 tcb.waitingForNetworkData = false;
 
                 if (tcb.status != TCBStatus.CLOSE_WAIT) {
-                    ByteBufferPool.release(receiveBuffer);
                     return;
                 }
 

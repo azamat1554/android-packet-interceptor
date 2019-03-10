@@ -34,7 +34,7 @@ public class UDPInput implements Runnable {
     private Selector selector;
     private ConcurrentLinkedQueue<ByteBuffer> outputQueue;
 
-    public UDPInput(ConcurrentLinkedQueue<ByteBuffer> outputQueue, Selector selector) {
+    UDPInput(ConcurrentLinkedQueue<ByteBuffer> outputQueue, Selector selector) {
         this.outputQueue = outputQueue;
         this.selector = selector;
     }
@@ -59,7 +59,7 @@ public class UDPInput implements Runnable {
                     if (key.isValid() && key.isReadable()) {
                         keyIterator.remove();
 
-                        ByteBuffer receiveBuffer = ByteBufferPool.acquire();
+                        ByteBuffer receiveBuffer = ByteBufferFactory.create();
                         // Leave space for the header
                         receiveBuffer.position(HEADER_SIZE);
 

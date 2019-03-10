@@ -83,7 +83,7 @@ public class TCPOutput implements Runnable {
 
                 ByteBuffer payloadBuffer = currentPacket.backingBuffer; // Этот будеф откуда сюда попадает.
                 currentPacket.backingBuffer = null; // Почему обнуляется буфер? Может чтобы переиспользовать.
-                ByteBuffer responseBuffer = ByteBufferPool.acquire(); // просто создает буфер или переиспользует закэшированный
+                ByteBuffer responseBuffer = ByteBufferFactory.create(); // просто создает буфер или переиспользует закэшированный
 
                 InetAddress destinationAddress = currentPacket.ip4Header.destinationAddress;
 
@@ -106,10 +106,6 @@ public class TCPOutput implements Runnable {
                 else if (tcpHeader.isACK())
                     processACK(tcb, tcpHeader, payloadBuffer, responseBuffer);
 
-                // XXX: cleanup later
-                if (responseBuffer.position() == 0)
-                    ByteBufferPool.release(responseBuffer);
-                ByteBufferPool.release(payloadBuffer);
             }
         } catch (InterruptedException e) {
             Log.i(TAG, "Stopping");
@@ -193,6 +189,7 @@ public class TCPOutput implements Runnable {
 
     private void processACK(TCB tcb, TCPHeader tcpHeader, ByteBuffer payloadBuffer, ByteBuffer responseBuffer) throws IOException {
         int payloadSize = payloadBuffer.limit() - payloadBuffer.position();
+        Log.d(TAG, "PAYLOAD_SIZE: " + payloadSize);
 
         synchronized (tcb) {
             SocketChannel outputChannel = tcb.channel;
@@ -241,7 +238,6 @@ public class TCPOutput implements Runnable {
     }
 
     private void closeCleanly(TCB tcb, ByteBuffer buffer) {
-        ByteBufferPool.release(buffer);
         TCB.closeTCB(tcb);
     }
 }

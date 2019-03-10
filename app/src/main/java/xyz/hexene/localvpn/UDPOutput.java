@@ -45,7 +45,7 @@ public class UDPOutput implements Runnable {
                 }
             });
 
-    public UDPOutput(ConcurrentLinkedQueue<Packet> inputQueue, Selector selector, LocalVPNService vpnService) {
+    UDPOutput(ConcurrentLinkedQueue<Packet> inputQueue, Selector selector, LocalVPNService vpnService) {
         this.inputQueue = inputQueue;
         this.selector = selector;
         this.vpnService = vpnService;
@@ -84,7 +84,6 @@ public class UDPOutput implements Runnable {
                     } catch (IOException e) {
                         Log.e(TAG, "Connection error: " + ipAndPort, e);
                         closeChannel(outputChannel);
-                        ByteBufferPool.release(currentPacket.backingBuffer);
                         continue;
                     }
                     outputChannel.configureBlocking(false);
@@ -105,7 +104,6 @@ public class UDPOutput implements Runnable {
                     channelCache.remove(ipAndPort);
                     closeChannel(outputChannel);
                 }
-                ByteBufferPool.release(currentPacket.backingBuffer);
             }
         } catch (InterruptedException e) {
             Log.i(TAG, "Stopping");

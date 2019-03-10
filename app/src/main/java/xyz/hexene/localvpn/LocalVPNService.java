@@ -116,7 +116,6 @@ public class LocalVPNService extends VpnService {
         deviceToNetworkTCPQueue = null;
         deviceToNetworkUDPQueue = null;
         networkToDeviceQueue = null;
-        ByteBufferPool.clear();
         closeResources(udpSelector, tcpSelector, vpnInterface);
     }
 
@@ -141,9 +140,9 @@ public class LocalVPNService extends VpnService {
         private ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue;
 
         VPNRunnable(FileDescriptor vpnFileDescriptor,
-                           ConcurrentLinkedQueue<Packet> deviceToNetworkUDPQueue,
-                           ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue,
-                           ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue) {
+                    ConcurrentLinkedQueue<Packet> deviceToNetworkUDPQueue,
+                    ConcurrentLinkedQueue<Packet> deviceToNetworkTCPQueue,
+                    ConcurrentLinkedQueue<ByteBuffer> networkToDeviceQueue) {
             this.vpnFileDescriptor = vpnFileDescriptor;
             this.deviceToNetworkUDPQueue = deviceToNetworkUDPQueue;
             this.deviceToNetworkTCPQueue = deviceToNetworkTCPQueue;
@@ -165,7 +164,7 @@ public class LocalVPNService extends VpnService {
                 boolean dataReceived;
                 while (!Thread.interrupted()) {
                     if (dataSent)
-                        bufferToNetwork = ByteBufferPool.acquire(); // вот буфер здесь создается.
+                        bufferToNetwork = ByteBufferFactory.create(); // вот буфер здесь создается.
                     else
                         bufferToNetwork.clear();
 
@@ -177,7 +176,7 @@ public class LocalVPNService extends VpnService {
                         Packet packet = new Packet(bufferToNetwork);
 
 //                        Log.d("OUTPUT", packet.toString());
-                        PacketLogger.logPacket(packet);
+//                        PacketLogger.logPacket(packet);
 
 
                         if (packet.isUDP()) {
@@ -206,11 +205,12 @@ public class LocalVPNService extends VpnService {
                             int HEADER_LENGTH = 40;
                             byte[] headerBytes = new byte[HEADER_LENGTH];
                             System.arraycopy(bufferFromNetwork.array(), 4, headerBytes, 0, HEADER_LENGTH);
-                            Log.d("INPUT", new Packet(ByteBuffer.wrap(headerBytes)).toString());
+//                            Log.d("INPUT", new Packet(ByteBuffer.wrap(headerBytes)).toString());
+//                            PacketLogger.logPacket(new Packet(ByteBuffer.wrap(headerBytes)));
+
                         }
                         dataReceived = true;
 
-                        ByteBufferPool.release(bufferFromNetwork);
                     } else {
                         dataReceived = false;
                     }
